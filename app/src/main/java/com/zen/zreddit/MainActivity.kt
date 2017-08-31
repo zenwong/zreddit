@@ -1,14 +1,12 @@
 package com.zen.zreddit
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
 import android.view.View
 import android.view.ViewGroup
-import com.zen.zreddit.adapters.PostsAdapter
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.row_post.view.*
 import kotlinx.coroutines.experimental.android.UI

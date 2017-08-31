@@ -63,9 +63,11 @@ object Reddit {
 	val jsonFactory = JsonFactory()
 	val comments = ArrayList<Comment>()
 
-	fun parseComments(json: String, header: Header) {
-		val jp = jsonFactory.createParser(json)
-		try {
+	fun parseComments(url: String, header: Header): Deferred<ArrayList<Comment>> {
+		return async(CommonPool) {
+			val comments = ArrayList<Comment>()
+			val json = get(url)
+			val jp = jsonFactory.createParser(json)
 			while (jp.nextToken() !== null) {
 				if ("selftext".equals(jp.currentName)) {
 					header.selftext = jp.nextTextValue()
@@ -129,41 +131,11 @@ object Reddit {
 					//println("${comment.depth} - ${comment.author}) ${comment.body}")
 				}
 
-//				if ("author" == jp.currentName) {
-//					val comment = Comment()
-//					comment.author = jp.nextTextValue()
-//
-//					while (jp.nextToken() != JsonToken.END_OBJECT) {
-//						val key = jp.currentName
-//						when (key) {
-//							"replies" -> parseReplies(jp)
-//							"score" -> comment.score = jp.nextIntValue(0)
-//							"body" -> {
-//								comment.body = jp.nextTextValue()
-//								println(comment.body)
-//							}
-//							"name" -> comment.name = jp.nextTextValue().replace("t1_", "")
-//							"created_utc" -> {
-//								jp.nextToken()
-//								comment.created_utc = jp.valueAsLong
-//							}
-//						}
-//					}
-//
-//				}
-
 			}
-		} catch (ex: Exception) {
-			println(ex.message)
+			comments
 		}
-
-//		comments.sortedBy { it.depth }.forEach {
-//			println("${it.depth} - ${it.author}) ${it.body}")
-//		}
-
-
-		println("num comments: ${comments.size}")
 	}
+
 
 	fun parseReplies(jp: JsonParser) {
 
