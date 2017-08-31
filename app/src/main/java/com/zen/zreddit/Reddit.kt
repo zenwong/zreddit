@@ -164,7 +164,7 @@ object Reddit {
 							"created_utc" -> post.created = jp.getValueAsLong(0L)
 							"media" -> jp.skipChildren()
 							"num_comments" -> post.comments = jp.nextIntValue(0)
-						//"permalink" -> post.permalink = jp.nextTextValue()
+							"permalink" -> post.permalink = jp.nextTextValue()
 						}
 					}
 
