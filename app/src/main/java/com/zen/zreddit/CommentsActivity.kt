@@ -24,7 +24,7 @@ class CommentsActivity : AppCompatActivity() {
 
 			launch(UI) {
 				val header = Header()
-				val comments = Reddit.parseComments(it.toString() + ".json", header).await()
+				val comments = Reddit.parseComments(Reddit.normalizeCommentsUrl(it.toString()), header).await()
 				commentsAdapter.setData(comments)
 
 				if(header.preview.isNotBlank())	backdrop.loadUrl(header.preview)

@@ -15,7 +15,8 @@ import kotlinx.coroutines.experimental.android.UI
 import kotlinx.coroutines.experimental.launch
 
 class MainActivity : AppCompatActivity() {
-	var postUrl = "https://www.reddit.com/r/all/.json"
+	var postUrl = Reddit.REDDIT_FRONT
+	val postsAdapter = PostsAdapter()
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -23,6 +24,11 @@ class MainActivity : AppCompatActivity() {
 		supportActionBar?.setDisplayHomeAsUpEnabled(true)
 		val lm = LinearLayoutManager(this)
 		lm.orientation = LinearLayoutManager.VERTICAL
+
+		if(prefs.accessToken.isBlank()) {
+			startActivity(Intent(this, LoginActivity::class.java))
+			finish()
+		}
 
 		intent?.data?.let {
 			println("Main Activity got intent $intent")
@@ -32,13 +38,14 @@ class MainActivity : AppCompatActivity() {
 				startActivity(intent)
 				finish()
 			} else {
-				postUrl = it.toString() + ".json"
+				postUrl = Reddit.REDDIT_FRONT + it.path
 			}
 		}
 
+		println("POSTURL $postUrl")
+
 		launch(UI) {
 			val posts = Reddit.parsePosts(postUrl).await()
-			val postsAdapter = PostsAdapter()
 			postsAdapter.setData(posts)
 			rv.apply {
 				setHasFixedSize(true)
@@ -47,6 +54,29 @@ class MainActivity : AppCompatActivity() {
 			}
 		}
 
+	}
+
+	override fun onResume() {
+		super.onResume()
+
+		println("onResume")
+
+		intent?.data?.let {
+			println("Main Activity got intent ${intent.data}")
+			if (it.pathSegments.size > 2) {
+				val intent = Intent(this, CommentsActivity::class.java)
+				intent.data = it
+				startActivity(intent)
+				finish()
+			} else {
+				postUrl = Reddit.REDDIT_FRONT + it.path
+			}
+		}
+
+		launch(UI) {
+			val posts = Reddit.parsePosts(postUrl).await()
+			postsAdapter.setData(posts)
+		}
 	}
 
 	inner class PostsAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {

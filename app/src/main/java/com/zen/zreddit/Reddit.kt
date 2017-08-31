@@ -1,15 +1,21 @@
 package com.zen.zreddit
 
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.text.Html
+import android.util.Base64
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
 import kotlinx.coroutines.experimental.CommonPool
 import kotlinx.coroutines.experimental.Deferred
 import kotlinx.coroutines.experimental.async
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import okhttp3.*
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+
 
 class Post {
 	var title = ""
@@ -62,13 +68,40 @@ class Preview {
 }
 
 object Reddit {
+	var accessToken = ""
+	var refreshToken = ""
+	val CLIENTID = "f-A-UqH0oTkkeA"
+	val REDIRECT = "http://zreddit"
+	val REDDIT_AUTH_TOKEN = "https://ssl.reddit.com/api/v1/access_token"
+	val REDDIT_FRONT = "https://oauth.reddit.com"
+	val BASIC_AUTH = Base64.encodeToString("$CLIENTID:".toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP)
+	val timeout = 3L
+	val useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36"
 	val jsonFactory = JsonFactory()
-	val comments = ArrayList<Comment>()
+	var isOnline = true
+	val cacheSize = 10 * 1024 * 1024L
+	var cacheDir = ""
+	val cache = Cache(File(cacheDir), cacheSize)
+	val client = OkHttpClient.Builder()
+		.authenticator(RedditOauthAuthenticator())
+		.connectTimeout(timeout, TimeUnit.SECONDS).readTimeout(timeout, TimeUnit.SECONDS).build()
+	val cachedClient = OkHttpClient.Builder().cache(cache)
+		.addInterceptor { chain ->
+			var request = chain.request()
+			request = if (isOnline) {
+				request.newBuilder().header("Cache-Control", "public, max-age=" + 60).build()
+			} else {
+				request.newBuilder().header("Cache-Control", "public, only-if-cached, max-stale=" + 60 * 60 * 24 * 7).build()
+			}
+			chain.proceed(request)
+		}
+		.build()
 
 	fun parseComments(url: String, header: Header): Deferred<ArrayList<Comment>> {
 		return async(CommonPool) {
 			val comments = ArrayList<Comment>()
-			val json = get(url)
+			//val json = get(url)
+			val json = getOrEmpty(url)
 			val jp = jsonFactory.createParser(json)
 			while (jp.nextToken() !== null) {
 				if ("selftext".equals(jp.currentName)) {
@@ -129,7 +162,7 @@ object Reddit {
 								val body = jp.nextTextValue().trim()
 
 								val clean = body.split(" ").map {
-									if(it.startsWith("/u")) it.replace("/r", "https://reddit.com/r") else it
+									if (it.startsWith("/u")) it.replace("/r", "https://reddit.com/r") else it
 								}.joinToString(" ")
 
 								comment.body = clean
@@ -154,7 +187,8 @@ object Reddit {
 
 	fun parsePosts(url: String): Deferred<ArrayList<Post>> {
 		return async(CommonPool) {
-			val json = get(url)
+			//val json = get(url)
+			val json = getOrEmpty(url)
 			val posts = ArrayList<Post>()
 			val jp = jsonFactory.createParser(json)
 			while (jp.nextToken() !== null) {
@@ -300,15 +334,107 @@ object Reddit {
 		jp.nextToken()
 	}
 
+	fun getAuthUrl(clientid: String = CLIENTID, state: String = "NONCE", redirect: String = "http://zreddit", scope: String = "read identity privatemessages"): String {
+		//println("https://ssl.reddit.com/api/v1/authorize.compact?client_id=$clientid&response_type=code&state=$state&redirect_uri=$redirect&duration=permanent&scope=$scope")
+		return "https://ssl.reddit.com/api/v1/authorize.compact?client_id=$clientid&response_type=code&state=$state&redirect_uri=$redirect&duration=permanent&scope=$scope"
+	}
+
+	fun getAccessToken(activity: Activity, url: String) {
+		val uri = Uri.parse(url)
+		val error = uri.getQueryParameter("error")
+		if (error !== null) {
+			println(error)
+			if ("access_denied" == error) {
+				//EventBus.getDefault().post(Navigation(BROWSER))
+			}
+		} else {
+			val code = uri.getQueryParameter("code")
+			val body = FormBody.Builder().add("code", code).add("redirect_uri", REDIRECT).add("grant_type", "authorization_code").build()
+			val req = Request.Builder().url(REDDIT_AUTH_TOKEN).addHeader("Authorization", "Basic $BASIC_AUTH").post(body).build()
+
+			client.newCall(req).enqueue(object : Callback {
+				override fun onFailure(call: Call?, e: IOException?) {
+				}
+
+				override fun onResponse(call: Call?, response: Response) {
+					val jp = jsonFactory.createParser(response.body()!!.string())
+
+					while (jp.nextToken() != JsonToken.END_OBJECT) {
+						when (jp.currentName) {
+							"access_token" -> {
+								jp.nextToken()
+								val access = jp.valueAsString
+								accessToken = access
+								prefs.accessToken = accessToken
+								println("ACCESS TOKEN ${prefs.accessToken}")
+								activity.startActivity(Intent(activity, MainActivity::class.java))
+							}
+							"refresh_token" -> {
+								jp.nextToken()
+								refreshToken = jp.valueAsString
+								prefs.refreshToken = refreshToken
+							}
+						}
+					}
+				}
+			})
+		}
+
+	}
+
+	fun refreshAccessToken(): String {
+		val body = FormBody.Builder().add("grant_type", "refresh_token").add("refresh_token", prefs.refreshToken).build()
+		val req = Request.Builder().url(REDDIT_AUTH_TOKEN).addHeader("Authorization", "Basic $BASIC_AUTH").post(body).build()
+		val json = client.newCall(req).execute().body()!!.string()
+		val jp = jsonFactory.createParser(json)
+
+		var local = ""
+		while (jp.nextToken() != JsonToken.END_OBJECT) {
+			when (jp.currentName) {
+				"access_token" -> {
+					local = jp.nextTextValue()
+					accessToken = local
+					prefs.accessToken = accessToken
+				}
+			}
+		}
+		return local
+	}
+
+	fun normalizeCommentsUrl(url: String, limit: Int = 10): String {
+		val uri = Uri.parse(url)
+		if(uri.pathSegments.last().equals(".json"))
+			return  "$REDDIT_FRONT${uri.path}?limit=$limit"
+		return "$REDDIT_FRONT${uri.path}.json?limit=$limit"
+	}
+
+	fun getOrEmpty(url: String): String {
+		val resp = client.newCall(Request.Builder().url(url).addHeader("Authorization", "Bearer ${prefs.accessToken}").build()).execute()
+		return resp.body()!!.string()
+	}
+
+
 	fun get(url: String): String {
-		val timeout = 3L
-		val useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36"
-		val client = OkHttpClient.Builder().connectTimeout(timeout, TimeUnit.SECONDS).readTimeout(timeout, TimeUnit.SECONDS).build()
 		try {
 			return client.newCall(Request.Builder().url(url).removeHeader("User-Agent").addHeader("User-Agent", useragent).build()).execute().body()!!.string()
 		} catch (ex: Exception) {
 			println(ex.message)
 		}
 		return ""
+	}
+
+	fun getCached(url: String): String {
+		try {
+			return cachedClient.newCall(Request.Builder().url(url).removeHeader("User-Agent").addHeader("User-Agent", useragent).build()).execute().body()!!.string()
+		} catch (ex: Exception) {
+			println(ex.message)
+		}
+		return ""
+	}
+}
+
+class RedditOauthAuthenticator : Authenticator {
+	override fun authenticate(route: Route, response: Response): Request {
+		return response.request().newBuilder().header("Authorization", "Bearer ${prefs.refreshToken}").build()
 	}
 }
