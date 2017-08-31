@@ -68,12 +68,11 @@ class Preview {
 }
 
 object Reddit {
-	var accessToken = ""
-	var refreshToken = ""
+	var postAfter = ""
 	val CLIENTID = "f-A-UqH0oTkkeA"
 	val REDIRECT = "http://zreddit"
 	val REDDIT_AUTH_TOKEN = "https://ssl.reddit.com/api/v1/access_token"
-	val REDDIT_FRONT = "https://oauth.reddit.com"
+	val REDDIT_FRONT = "https://oauth.reddit.com?limit=50"
 	val BASIC_AUTH = Base64.encodeToString("$CLIENTID:".toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP)
 	val timeout = 3L
 	val useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36"
@@ -188,7 +187,11 @@ object Reddit {
 	fun parsePosts(url: String): Deferred<ArrayList<Post>> {
 		return async(CommonPool) {
 			//val json = get(url)
-			val json = getOrEmpty(url)
+			var local = url
+			if(postAfter.isNotBlank()) {
+				local = url + "?limit=50&after=$postAfter"
+			}
+			val json = getOrEmpty(local)
 			val posts = ArrayList<Post>()
 			val jp = jsonFactory.createParser(json)
 			while (jp.nextToken() !== null) {
@@ -214,6 +217,10 @@ object Reddit {
 					}
 
 					posts.add(post)
+				}
+
+				if ("after" == jp.currentName) {
+					postAfter = jp.nextTextValue()
 				}
 
 			}
@@ -363,16 +370,13 @@ object Reddit {
 						when (jp.currentName) {
 							"access_token" -> {
 								jp.nextToken()
-								val access = jp.valueAsString
-								accessToken = access
-								prefs.accessToken = accessToken
-								println("ACCESS TOKEN ${prefs.accessToken}")
+								prefs.accessToken = jp.valueAsString
+								//println("ACCESS TOKEN ${prefs.accessToken}")
 								activity.startActivity(Intent(activity, MainActivity::class.java))
 							}
 							"refresh_token" -> {
 								jp.nextToken()
-								refreshToken = jp.valueAsString
-								prefs.refreshToken = refreshToken
+								prefs.refreshToken = jp.valueAsString
 							}
 						}
 					}
@@ -393,8 +397,7 @@ object Reddit {
 			when (jp.currentName) {
 				"access_token" -> {
 					local = jp.nextTextValue()
-					accessToken = local
-					prefs.accessToken = accessToken
+					prefs.accessToken = local
 				}
 			}
 		}
@@ -430,6 +433,10 @@ object Reddit {
 			println(ex.message)
 		}
 		return ""
+	}
+
+	suspend fun getPostsAfter(limit: Int = 5) : Deferred<ArrayList<Post>> {
+		return parsePosts(getOrEmpty("$REDDIT_FRONT?limit=$limit&after=$postAfter"))
 	}
 }
 

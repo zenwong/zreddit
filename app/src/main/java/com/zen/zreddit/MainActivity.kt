@@ -27,39 +27,28 @@ class MainActivity : AppCompatActivity() {
 
 		if(prefs.accessToken.isBlank()) {
 			startActivity(Intent(this, LoginActivity::class.java))
+			println("Starting LOGIN")
 			finish()
 		}
 
-		intent?.data?.let {
-			println("Main Activity got intent $intent")
-			if (it.pathSegments.size > 2) {
-				val intent = Intent(this, CommentsActivity::class.java)
-				intent.data = it
-				startActivity(intent)
-				finish()
-			} else {
-				postUrl = Reddit.REDDIT_FRONT + it.path
-			}
-		}
-
-		println("POSTURL $postUrl")
-
-		launch(UI) {
-			val posts = Reddit.parsePosts(postUrl).await()
-			postsAdapter.setData(posts)
-			rv.apply {
-				setHasFixedSize(true)
-				layoutManager = lm
-				adapter = postsAdapter
-			}
+		rv.apply {
+			setHasFixedSize(true)
+			layoutManager = lm
+			adapter = postsAdapter
+			addOnScrollListener(object: EndlessRecyclerListener(lm) {
+				override fun onLoadMore(page: Int, totalItemsCount: Int) {
+					launch(UI) {
+						val afters = Reddit.parsePosts(postUrl).await()
+						postsAdapter.addData(afters)
+					}
+				}
+			})
 		}
 
 	}
 
 	override fun onResume() {
 		super.onResume()
-
-		println("onResume")
 
 		intent?.data?.let {
 			println("Main Activity got intent ${intent.data}")
@@ -89,6 +78,12 @@ class MainActivity : AppCompatActivity() {
 			data.addAll(list)
 			//notifyItemRangeInserted(start + 1, list.size)
 			notifyDataSetChanged()
+		}
+
+		fun addData(list: ArrayList<Post>) {
+			val start = data.size
+			data.addAll(list)
+			notifyItemRangeInserted(start + 1, list.size)
 		}
 
 		override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
