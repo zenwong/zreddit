@@ -6,9 +6,8 @@ import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
 import android.view.View
 import android.view.ViewGroup
-import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.comments.*
-import kotlinx.android.synthetic.main.row_post.view.*
+import kotlinx.android.synthetic.main.row_post_txt.view.*
 import kotlinx.coroutines.experimental.android.UI
 import kotlinx.coroutines.experimental.launch
 
@@ -21,12 +20,15 @@ class CommentsActivity : AppCompatActivity() {
 		val commentsAdapter = CommentsAdapter()
 
 		intent?.data?.let {
+			println("COMMENTS Activity got intent $intent")
 
 			launch(UI) {
 				val header = Header()
 				val comments = Reddit.parseComments(it.toString() + ".json", header).await()
-				comments.forEach { println(it.author) }
 				commentsAdapter.setData(comments)
+
+				if(header.preview.isNotBlank())	backdrop.loadUrl(header.preview)
+				commentTitle.text = header.title
 
 				rvComment.apply {
 					setHasFixedSize(true)
@@ -59,8 +61,9 @@ class CommentsActivity : AppCompatActivity() {
 	inner class CommentsViewholder(iv: View) : RecyclerView.ViewHolder(iv) {
 
 		fun bind(comment: Comment) {
-			itemView.tvTitle.text = comment.body
-			itemView.tvSubreddit.text = comment.author
+			//itemView.tvTitle.text = comment.body_html
+			itemView.tvTitle.setHtml(comment.body_html)
+			//itemView.tvSubreddit.text = comment.author
 			//itemView.tvCreated.text = comment.created_utc.toString()
 		}
 

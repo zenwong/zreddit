@@ -1,5 +1,6 @@
 package com.zen.zreddit
 
+import android.text.Html
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
@@ -37,6 +38,7 @@ class Header {
 class Comment {
 	var depth = 0
 	var body = ""
+	var body_html = ""
 	var author = ""
 	var name = ""
 	var parent = ""
@@ -123,7 +125,16 @@ object Reddit {
 							"author" -> comment.author = jp.nextTextValue()
 							"parent_id" -> comment.parent = jp.nextTextValue()
 							"score" -> comment.score = jp.nextIntValue(0)
-							"body" -> comment.body = jp.nextTextValue().replace("\n", "")
+							"body" -> {
+								val body = jp.nextTextValue().trim()
+
+								val clean = body.split(" ").map {
+									if(it.startsWith("/u")) it.replace("/r", "https://reddit.com/r") else it
+								}.joinToString(" ")
+
+								comment.body = clean
+							}
+							"body_html" -> comment.body_html = Html.fromHtml(jp.nextTextValue()).toString()
 							"depth" -> comment.depth = jp.nextIntValue(0)
 						}
 					}

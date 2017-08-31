@@ -25,8 +25,11 @@ class MainActivity : AppCompatActivity() {
 		lm.orientation = LinearLayoutManager.VERTICAL
 
 		intent?.data?.let {
+			println("Main Activity got intent $intent")
 			if (it.pathSegments.size > 2) {
-				startActivity(Intent(this, CommentsActivity::class.java))
+				val intent = Intent(this, CommentsActivity::class.java)
+				intent.data = it
+				startActivity(intent)
 				finish()
 			} else {
 				postUrl = it.toString() + ".json"
